@@ -1,0 +1,12 @@
+[Unit]
+Description=ByeDPI - DPI bypass proxy
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/opt/proxy/byedpi/ciadpi -i 127.0.0.1 -p 1080 --tlsrec 2+s
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

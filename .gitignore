@@ -1,0 +1,31 @@
+# Sensitive configuration files
+config.env
+*.env
+.env*
+
+# Generated xray config with credentials
+xray-config.json
+
+# Backup files
+*.bak
+*.backup
+*~
+
+# Log files
+*.log
+logs/
+
+# Build artifacts
+*.o
+*.a
+
+# IDE and editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Temporary files
+*.tmp
+tmp/
