@@ -44,7 +44,7 @@ You need a VLESS server to use this proxy. You'll need the following information
 - UUID (e.g., `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`)
 - WebSocket path (e.g., `/ws` or `/your-path`)
 
-### Option 1: Interactive Setup
+### Option 1: Interactive Setup (Recommended)
 
 The setup script will prompt you for your VLESS configuration:
 
@@ -52,11 +52,19 @@ The setup script will prompt you for your VLESS configuration:
 sudo ./setup-proxy.sh
 ```
 
-You'll be asked to enter:
-1. VLESS server address
-2. VLESS port (default: 443)
-3. VLESS UUID
-4. WebSocket path
+**Easiest method**: Just paste your VLESS URL when prompted:
+
+```
+vless://ee998ef8-fb98-4756-8281-43f92099f1e2@server.example.com:443?path=%2Fws&security=tls&...#MyVPN
+```
+
+The script will automatically extract:
+- Server address
+- Port
+- UUID
+- WebSocket path
+
+Alternatively, press Enter to input each field manually.
 
 ### Option 2: Configuration File
 

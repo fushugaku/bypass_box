@@ -35,6 +35,54 @@ error() { echo -e "${RED}[x]${NC} $1"; exit 1; }
 info() { echo -e "${BLUE}[i]${NC} $1"; }
 
 # ============ VLESS CONFIGURATION ============
+# URL decode function
+urldecode() {
+    local data="${1//+/ }"
+    printf '%b' "${data//%/\\x}"
+}
+
+# Parse VLESS URL
+# Format: vless://UUID@ADDRESS:PORT?path=PATH&security=tls&...#NAME
+parse_vless_url() {
+    local url="$1"
+
+    # Remove vless:// prefix
+    url="${url#vless://}"
+
+    # Extract fragment (name after #) and remove it
+    url="${url%%#*}"
+
+    # Split into credentials and query parts
+    local base="${url%%\?*}"
+    local query="${url#*\?}"
+    [[ "$query" == "$base" ]] && query=""
+
+    # Extract UUID (before @)
+    VLESS_UUID="${base%%@*}"
+
+    # Extract address:port (after @)
+    local addr_port="${base#*@}"
+    VLESS_ADDRESS="${addr_port%%:*}"
+    VLESS_PORT="${addr_port##*:}"
+
+    # Parse query parameters for path
+    VLESS_PATH=""
+    if [[ -n "$query" ]]; then
+        # Extract path parameter
+        local path_param=$(echo "$query" | tr '&' '\n' | grep '^path=' | cut -d'=' -f2)
+        if [[ -n "$path_param" ]]; then
+            VLESS_PATH=$(urldecode "$path_param")
+        fi
+    fi
+
+    # Validate extracted values
+    if [[ -n "$VLESS_UUID" && -n "$VLESS_ADDRESS" && -n "$VLESS_PORT" ]]; then
+        return 0
+    else
+        return 1
+    fi
+}
+
 configure_vless() {
     SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -62,50 +110,57 @@ configure_vless() {
         if [[ "${use_existing,,}" != "n" ]]; then
             return 0
         fi
+        # Reset values for new input
+        VLESS_ADDRESS=""
+        VLESS_PORT=""
+        VLESS_UUID=""
+        VLESS_PATH=""
     fi
 
-    info "Please enter your VLESS server details."
-    info "You can get these from your VLESS provider or server setup."
+    info "You can paste a VLESS URL or enter details manually."
+    info "VLESS URL format: vless://uuid@server:port?path=/path&...#name"
     echo ""
 
-    # VLESS Address
+    read -p "Paste VLESS URL (or press Enter for manual input): " vless_url
+
+    if [[ -n "$vless_url" ]]; then
+        if parse_vless_url "$vless_url"; then
+            log "Successfully parsed VLESS URL"
+            # If path is empty, ask for it
+            if [[ -z "$VLESS_PATH" ]]; then
+                read -p "WebSocket path not found in URL. Enter path (e.g., /ws): " VLESS_PATH
+                [[ "${VLESS_PATH:0:1}" != "/" ]] && VLESS_PATH="/${VLESS_PATH}"
+            fi
+        else
+            warn "Failed to parse VLESS URL. Falling back to manual input."
+            VLESS_ADDRESS=""
+            VLESS_PORT=""
+            VLESS_UUID=""
+            VLESS_PATH=""
+        fi
+    fi
+
+    # Manual input for any missing values
     while [[ -z "$VLESS_ADDRESS" ]]; do
         read -p "VLESS Server Address (e.g., your-server.com): " VLESS_ADDRESS
-        if [[ -z "$VLESS_ADDRESS" ]]; then
-            warn "Address cannot be empty. Please try again."
-        fi
+        [[ -z "$VLESS_ADDRESS" ]] && warn "Address cannot be empty."
     done
 
-    # VLESS Port
     while [[ -z "$VLESS_PORT" || ! "$VLESS_PORT" =~ ^[0-9]+$ ]]; do
         read -p "VLESS Server Port [443]: " VLESS_PORT
         VLESS_PORT="${VLESS_PORT:-443}"
-        if ! [[ "$VLESS_PORT" =~ ^[0-9]+$ ]]; then
-            warn "Port must be a number. Please try again."
-            VLESS_PORT=""
-        fi
+        [[ ! "$VLESS_PORT" =~ ^[0-9]+$ ]] && warn "Port must be a number." && VLESS_PORT=""
     done
 
-    # VLESS UUID
     while [[ -z "$VLESS_UUID" ]]; do
         read -p "VLESS UUID: " VLESS_UUID
-        if [[ -z "$VLESS_UUID" ]]; then
-            warn "UUID cannot be empty. Please try again."
-        elif ! [[ "$VLESS_UUID" =~ ^[0-9a-fA-F-]+$ ]]; then
-            warn "UUID format appears invalid, but continuing anyway..."
-        fi
+        [[ -z "$VLESS_UUID" ]] && warn "UUID cannot be empty."
     done
 
-    # VLESS Path
     while [[ -z "$VLESS_PATH" ]]; do
         read -p "VLESS WebSocket Path (e.g., /ws): " VLESS_PATH
-        if [[ -z "$VLESS_PATH" ]]; then
-            warn "Path cannot be empty. Please try again."
-        fi
-        # Ensure path starts with /
-        if [[ "${VLESS_PATH:0:1}" != "/" ]]; then
-            VLESS_PATH="/${VLESS_PATH}"
-        fi
+        [[ -z "$VLESS_PATH" ]] && warn "Path cannot be empty."
+        [[ "${VLESS_PATH:0:1}" != "/" ]] && VLESS_PATH="/${VLESS_PATH}"
     done
 
     echo ""

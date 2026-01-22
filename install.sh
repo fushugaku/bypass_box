@@ -24,6 +24,36 @@ VLESS_PORT=""
 VLESS_UUID=""
 VLESS_PATH=""
 
+# URL decode function
+urldecode() {
+    local data="${1//+/ }"
+    printf '%b' "${data//%/\\x}"
+}
+
+# Parse VLESS URL
+parse_vless_url() {
+    local url="$1"
+    url="${url#vless://}"
+    url="${url%%#*}"
+
+    local base="${url%%\?*}"
+    local query="${url#*\?}"
+    [[ "$query" == "$base" ]] && query=""
+
+    VLESS_UUID="${base%%@*}"
+    local addr_port="${base#*@}"
+    VLESS_ADDRESS="${addr_port%%:*}"
+    VLESS_PORT="${addr_port##*:}"
+
+    VLESS_PATH=""
+    if [[ -n "$query" ]]; then
+        local path_param=$(echo "$query" | tr '&' '\n' | grep '^path=' | cut -d'=' -f2)
+        [[ -n "$path_param" ]] && VLESS_PATH=$(urldecode "$path_param")
+    fi
+
+    [[ -n "$VLESS_UUID" && -n "$VLESS_ADDRESS" && -n "$VLESS_PORT" ]]
+}
+
 configure_vless() {
     SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -45,40 +75,47 @@ configure_vless() {
         if [[ "${use_existing,,}" != "n" ]]; then
             return 0
         fi
+        VLESS_ADDRESS="" && VLESS_PORT="" && VLESS_UUID="" && VLESS_PATH=""
     fi
 
-    info "Please enter your VLESS server details."
+    info "Paste VLESS URL or enter details manually."
     echo ""
 
-    # VLESS Address
+    read -p "VLESS URL (or Enter for manual): " vless_url
+
+    if [[ -n "$vless_url" ]]; then
+        if parse_vless_url "$vless_url"; then
+            log "Parsed VLESS URL successfully"
+            [[ -z "$VLESS_PATH" ]] && read -p "WebSocket path: " VLESS_PATH
+            [[ "${VLESS_PATH:0:1}" != "/" ]] && VLESS_PATH="/${VLESS_PATH}"
+        else
+            warn "Failed to parse URL, using manual input."
+            VLESS_ADDRESS="" && VLESS_PORT="" && VLESS_UUID="" && VLESS_PATH=""
+        fi
+    fi
+
+    # Manual input for missing values
     while [[ -z "$VLESS_ADDRESS" ]]; do
         read -p "VLESS Server Address: " VLESS_ADDRESS
-        [[ -z "$VLESS_ADDRESS" ]] && warn "Address cannot be empty."
     done
 
-    # VLESS Port
     while [[ -z "$VLESS_PORT" || ! "$VLESS_PORT" =~ ^[0-9]+$ ]]; do
         read -p "VLESS Server Port [443]: " VLESS_PORT
         VLESS_PORT="${VLESS_PORT:-443}"
     done
 
-    # VLESS UUID
     while [[ -z "$VLESS_UUID" ]]; do
         read -p "VLESS UUID: " VLESS_UUID
-        [[ -z "$VLESS_UUID" ]] && warn "UUID cannot be empty."
     done
 
-    # VLESS Path
     while [[ -z "$VLESS_PATH" ]]; do
         read -p "VLESS WebSocket Path: " VLESS_PATH
-        [[ -z "$VLESS_PATH" ]] && warn "Path cannot be empty."
         [[ "${VLESS_PATH:0:1}" != "/" ]] && VLESS_PATH="/${VLESS_PATH}"
     done
 
     echo ""
     log "Configuration: $VLESS_ADDRESS:$VLESS_PORT"
 
-    # Save to config.env
     read -p "Save to config.env? [y/N]: " save_config
     if [[ "${save_config,,}" == "y" ]]; then
         cat > "${SCRIPT_DIR}/config.env" << EOF
